@@ -1,0 +1,43 @@
+* youtube-sub-feed
+A simple Python 3 script that reads YouTube channel names from a
+specified file and creates a subscription feed in HTML without the
+need for a YouTube account.
+** Requirements
+- Python 3
+- [[http://www.crummy.com/software/BeautifulSoup/][Beautiful Soup 4]]
+** Usage
+#+BEGIN_SRC bash
+youtube_sub_feed.py channels-file [output-file]
+#+END_SRC
+*** channels-file
+The channels-file argument is required and should be a
+newline-separated plain text file containing YouTube channel
+names.
+*** output-file
+A path specifying the name of the HTML file. If this is omitted the
+HTML file is written to stdout. The HTML file will contain valid HTML5
+and will consist of the three most recent videos of each specified
+channel reverse sorted by their published date (so that the most
+recent video appears on top). It will also display a thumbnail image
+for the /eight most recent videos/. This is done to save some bandwith
+when dealing with a large amount of channels. Lastly, the channel
+names in the HTML file are hyperlinks to the /videos page/, not the
+home page, of each channel.
+** Notes
+The YouTube API v2.0 does not support getting videos for multiple
+channels in one request. Because of this a separate request needs to
+be done for each channel. To speed the script up a bit eight worker
+threads are used for the channels. This way eight channels can be
+handled simultaneously. Creating more than eight threads does not
+speed it up further because YouTube currently limits the amount of
+open connections per client to eight.
+** Example
+Given the following channels-file:
+#+BEGIN_SRC bash
+emacsrocks
+minutephysics
+minuteearth
+smalin
+#+END_SRC
+The produced HTML file looks like this:
+[[./example_output.png]]
