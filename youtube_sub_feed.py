@@ -14,13 +14,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from bs4 import BeautifulSoup
 import os
 import sys
 import urllib.request
 import threading
 import queue
 import cgi
+import pickle
+import json
+import pprint
+
+api_key = "AIzaSyDF98jSaJnjAI1PtG15GZqElPqzsHB3_ZQ"
 
 class Entry:
     """Grabs the data we need from BeautifulSoup and escapes them"""
@@ -31,7 +35,6 @@ class Entry:
             self.video_title = entry.title.string
             self.video_url = entry.link['href']
             self.thumbnail_url = entry.find("media:thumbnail", attrs={"yt:name": "mqdefault"})['url']
-            self.thumbnail_alt = self.video_title + " thumbnail"
 
     def escape(self):
         self.channel_name = cgi.escape(self.channel_name)
@@ -39,7 +42,7 @@ class Entry:
         self.video_title = cgi.escape(self.video_title)
         self.video_url = cgi.escape(self.video_url)
         self.thumbnail_url = cgi.escape(self.thumbnail_url)
-        self.thumbnail_alt = cgi.escape(self.thumbnail_alt)
+
 
 def write_file_to_fd(path):
     f = open(path, 'r')
@@ -78,10 +81,29 @@ def print_progress(finished_one=True):
 
 print_progress.amount_finished = 0 # function attribute
 
+def lookup_playlist_id(channel_name):
+    response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
+                                      "key=" + api_key +
+                                      "&part=contentDetails" +
+                                      "&fields=items/contentDetails/relatedPlaylists/uploads" +
+                                      "&forUsername=" + channel_name).read().decode("utf-8")
+
+    response = json.loads(response)
+
+    return response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+
 def create_channel_vid_links():
     while True:
         max_results = 3
         channel_name = queue.get()
+
+        playlist_id = ""
+        try:
+            playlist_id = playlist_id_cache[channel_name]
+        except KeyError:
+            playlist_id = lookup_playlist_id(channel_name)
+            playlist_id_cache[channel_name] = playlist_id
+
         page = urllib.request.urlopen("http://gdata.youtube.com/feeds/api/videos?v=2&max-results=" +
                                       str(max_results) + "&orderby=published&safeSearch=none&author=" +
                                       channel_name)
@@ -121,12 +143,30 @@ def get_channel_list_from_file(file_path):
 
     return channels
 
+def read_cache(file_path):
+    try:
+        with open(file_path, 'rb') as f:
+            return pickle.load(f)
+    except IOError:
+        return {}
+
+def write_cache(file_path, to_write):
+    with open(file_path, 'wb') as f:
+        pickle.dump(entry, f)
+
+def prettyPrint(obj):
+    pp = pprint.PrettyPrinter(indent = 4)
+    pp.pprint(obj)
+
 def print_help():
     print("Usage: youtube_sub_feed.py channels-file [output-file]")
 
 ########
 # MAIN #
 ########
+lookup_playlist_id("minutephysics")
+sys.exit()
+
 try:
     channels_file_path = sys.argv[1]
 except IndexError:
@@ -137,6 +177,8 @@ try:
     output_fd = open(sys.argv[2], 'w')
 except IndexError:
     output_fd = sys.stdout
+
+playlist_id_cache = read_cache()
 
 raw_entries = [];
 channels = get_channel_list_from_file(channels_file_path)
@@ -159,6 +201,8 @@ for channel in channels:
 
 # wait until all the work in the queue is done
 queue.join()
+
+write_cache(cache_name, playlist_id_cache)
 
 raw_entries = sorted(raw_entries, key=lambda raw_entry: raw_entry.published.string, reverse=True)
 
