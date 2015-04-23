@@ -25,25 +25,25 @@ import json
 import pprint
 
 api_key = "AIzaSyDF98jSaJnjAI1PtG15GZqElPqzsHB3_ZQ"
+
+# maps channel_id => uploaded_playlist_id
 cache_name = "youtube_sub_feed.cache"
 
 class Entry:
     """Grabs the data we need and escapes it"""
     def __init__(self, entry=None):
         if entry is not None:
-            self.channel_name = entry['snippet']['channelTitle']
-            self.channel_id = entry['snippet']['channelId']
-            self.video_title = entry['snippet']['title']
-            self.video_url = "https://www.youtube.com/watch?v=" + entry['snippet']['resourceId']['videoId']
-            self.thumbnail_url = entry['snippet']['thumbnails']['medium']['url']
-            self.publishedAt = entry['snippet']['publishedAt']
+            entry = entry['snippet']
+            self.channel_name = entry['channelTitle']
+            self.channel_id = entry['channelId']
+            self.video_title = entry['title']
+            self.video_url = "https://www.youtube.com/watch?v=" + entry['resourceId']['videoId']
+            self.thumbnail_url = entry['thumbnails']['medium']['url']
+            self.publishedAt = entry['publishedAt']
 
     def escape(self):
         self.channel_name = cgi.escape(self.channel_name)
-        self.channel_id = cgi.escape(self.channel_id)
         self.video_title = cgi.escape(self.video_title)
-        self.video_url = cgi.escape(self.video_url)
-        self.thumbnail_url = cgi.escape(self.thumbnail_url)
 
 def write_file_to_fd(path):
     f = open(path, 'r')
@@ -82,18 +82,17 @@ def print_progress(finished_one=True):
 
 print_progress.amount_finished = 0 # function attribute
 
-def lookup_playlist_id(channel_name):
-    if channel_name not in playlist_id_cache:
-        print("cache miss")
+def lookup_playlist_id(channel_id):
+    if channel_id not in playlist_id_cache:
         response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
                                           "key=" + api_key +
                                           "&part=contentDetails" +
                                           "&fields=items/contentDetails/relatedPlaylists/uploads" +
-                                          "&forUsername=" + channel_name).read().decode("utf-8")
+                                          "&id=" + channel_id).read().decode("utf-8")
         response = json.loads(response)
-        playlist_id_cache[channel_name] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        playlist_id_cache[channel_id] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
 
-    return playlist_id_cache[channel_name]
+    return playlist_id_cache[channel_id]
 
 def create_channel_vid_links():
     while True:
@@ -127,7 +126,7 @@ def get_channel_list_from_file(file_path):
 
     for line in channels_fd:
         if len(line) != 0:
-            channels.append(line)
+            channels.append(line.rstrip('\n'))
 
     channels_fd.close()
 
@@ -204,7 +203,7 @@ for entry in entries:
     entry.escape()
 
     if (entry_nr < 8):
-        image = '\t\t\t<td class="video_column"><img src="' + entry.thumbnail_url + '" alt="' + entry.video_title + ' thumbnail"' + '"/>'
+        image = '\t\t\t<td class="video_column"><img src="' + entry.thumbnail_url + '" alt="' + entry.video_title + ' thumbnail"/>'
     else:
         image = '\t\t\t<td></td>'
 
