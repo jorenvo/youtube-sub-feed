@@ -25,16 +25,18 @@ import json
 import pprint
 
 api_key = "AIzaSyDF98jSaJnjAI1PtG15GZqElPqzsHB3_ZQ"
+cache_name = "youtube_sub_feed.cache"
 
 class Entry:
-    """Grabs the data we need from BeautifulSoup and escapes them"""
+    """Grabs the data we need and escapes it"""
     def __init__(self, entry=None):
         if entry is not None:
-            self.channel_name = entry.find("name").string
-            self.channel_id = entry.channel_id.string
-            self.video_title = entry.title.string
-            self.video_url = entry.link['href']
-            self.thumbnail_url = entry.find("media:thumbnail", attrs={"yt:name": "mqdefault"})['url']
+            self.channel_name = entry['snippet']['channelTitle']
+            self.channel_id = entry['snippet']['channelId']
+            self.video_title = entry['snippet']['title']
+            self.video_url = "https://www.youtube.com/watch?v=" + entry['snippet']['resourceId']['videoId']
+            self.thumbnail_url = entry['snippet']['thumbnails']['medium']['url']
+            self.publishedAt = entry['snippet']['publishedAt']
 
     def escape(self):
         self.channel_name = cgi.escape(self.channel_name)
@@ -42,7 +44,6 @@ class Entry:
         self.video_title = cgi.escape(self.video_title)
         self.video_url = cgi.escape(self.video_url)
         self.thumbnail_url = cgi.escape(self.thumbnail_url)
-
 
 def write_file_to_fd(path):
     f = open(path, 'r')
@@ -82,53 +83,42 @@ def print_progress(finished_one=True):
 print_progress.amount_finished = 0 # function attribute
 
 def lookup_playlist_id(channel_name):
-    response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
-                                      "key=" + api_key +
-                                      "&part=contentDetails" +
-                                      "&fields=items/contentDetails/relatedPlaylists/uploads" +
-                                      "&forUsername=" + channel_name).read().decode("utf-8")
+    if channel_name not in playlist_id_cache:
+        print("cache miss")
+        response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
+                                          "key=" + api_key +
+                                          "&part=contentDetails" +
+                                          "&fields=items/contentDetails/relatedPlaylists/uploads" +
+                                          "&forUsername=" + channel_name).read().decode("utf-8")
+        response = json.loads(response)
+        playlist_id_cache[channel_name] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
 
-    response = json.loads(response)
-
-    return response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+    return playlist_id_cache[channel_name]
 
 def create_channel_vid_links():
     while True:
         max_results = 3
         channel_name = queue.get()
+        playlist_id = lookup_playlist_id(channel_name)
 
-        playlist_id = ""
-        try:
-            playlist_id = playlist_id_cache[channel_name]
-        except KeyError:
-            playlist_id = lookup_playlist_id(channel_name)
-            playlist_id_cache[channel_name] = playlist_id
+        response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/playlistItems?" +
+                                          "key=" + api_key +
+                                          "&maxResults=" + str(max_results) +
+                                          "&playlistId=" + playlist_id +
+                                          "&fields=items/snippet(title,channelId,channelTitle,publishedAt,thumbnails/medium/url,resourceId/videoId)" +
+                                          "&part=snippet").read().decode("utf-8")
+        response = json.loads(response)
 
-        page = urllib.request.urlopen("http://gdata.youtube.com/feeds/api/videos?v=2&max-results=" +
-                                      str(max_results) + "&orderby=published&safeSearch=none&author=" +
-                                      channel_name)
+        for item in response['items']:
+            entry = Entry(item)
 
-        # soup it up
-        documentsoup = BeautifulSoup(page)
-        bodyentries = documentsoup.find_all("entry")
+            lock.acquire()
+            try:
+                entries.append(entry)
+            finally:
+                lock.release()
 
-        entry_list = []
-
-        for entry in bodyentries:
-            # get rid of the GET arguments after all the links
-            link = entry.link['href']
-            entry.link['href'] = link[:link.find('&')]
-            entry.channel_id = entry.find("yt:uploaderid")
-
-            entry_list.append(entry)
-
-        lock.acquire()
-        try:
-            print_progress()
-            raw_entries.extend(entry_list)
-        finally:
-            lock.release()
-
+        print_progress()
         queue.task_done()
 
 def get_channel_list_from_file(file_path):
@@ -152,7 +142,7 @@ def read_cache(file_path):
 
 def write_cache(file_path, to_write):
     with open(file_path, 'wb') as f:
-        pickle.dump(entry, f)
+        pickle.dump(playlist_id_cache, f)
 
 def prettyPrint(obj):
     pp = pprint.PrettyPrinter(indent = 4)
@@ -164,9 +154,6 @@ def print_help():
 ########
 # MAIN #
 ########
-lookup_playlist_id("minutephysics")
-sys.exit()
-
 try:
     channels_file_path = sys.argv[1]
 except IndexError:
@@ -178,9 +165,10 @@ try:
 except IndexError:
     output_fd = sys.stdout
 
-playlist_id_cache = read_cache()
+playlist_id_cache = read_cache(cache_name)
+prettyPrint(playlist_id_cache)
 
-raw_entries = [];
+entries = [];
 channels = get_channel_list_from_file(channels_file_path)
 
 lock = threading.Lock()
@@ -204,7 +192,7 @@ queue.join()
 
 write_cache(cache_name, playlist_id_cache)
 
-raw_entries = sorted(raw_entries, key=lambda raw_entry: raw_entry.published.string, reverse=True)
+entries = sorted(entries, key=lambda entry: entry.publishedAt, reverse=True)
 
 write_html_header()
 
@@ -212,12 +200,11 @@ print('\t<table style="margin:0px auto">', file=output_fd)
 
 entry_nr = 0
 
-for raw_entry in raw_entries:
-    entry = Entry(raw_entry)
+for entry in entries:
     entry.escape()
 
     if (entry_nr < 8):
-        image = '\t\t\t<td class="video_column"><img src="' + entry.thumbnail_url + '" alt="' + entry.thumbnail_alt + '"/>'
+        image = '\t\t\t<td class="video_column"><img src="' + entry.thumbnail_url + '" alt="' + entry.video_title + ' thumbnail"' + '"/>'
     else:
         image = '\t\t\t<td></td>'
 
