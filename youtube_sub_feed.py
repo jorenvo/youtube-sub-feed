@@ -178,7 +178,7 @@ except IndexError:
 
 playlist_id_cache = read_cache(cache_name)
 
-entries = [];
+entries = []
 channels = get_channel_list_from_file(channels_file_path)
 
 lock = threading.Lock()

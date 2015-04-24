@@ -4,7 +4,6 @@ specified file and creates a subscription feed in HTML without the
 need for a YouTube account.
 ** Requirements
 - Python 3
-- [[http://www.crummy.com/software/BeautifulSoup/][Beautiful Soup 4]]
 ** Usage
 #+BEGIN_SRC bash
 youtube_sub_feed.py channels-file [output-file]
@@ -12,32 +11,49 @@ youtube_sub_feed.py channels-file [output-file]
 *** channels-file
 The channels-file argument is required and should be a
 newline-separated plain text file containing YouTube channel
-names.
+id's. Channel id's are strings that YouTube uses to uniquely identify
+channels. They look like this: =UCkRmQ_G_NbdbCQMpALg6UPg=. In the old
+days you could uniquely identify channels through their name. This was
+obviously nice to use because you didn't have to use cryptic id
+strings. Although you can still use channel names (called Usernames in
+the API), this leads to issues because some newer channels don't have
+usernames associated with them. I assume this means they're not linked
+to G+ or something. Anyway because of this, I decided to just use the
+channel id's and deal with them being unreadable. I provided a script
+called =convert_to_channel_id.py= which takes a channel name and
+outputs the channel id.
 *** output-file
 A path specifying the name of the HTML file. If this is omitted the
 HTML file is written to stdout. The HTML file will contain valid HTML5
 and will consist of the three most recent videos of each specified
 channel reverse sorted by their published date (so that the most
 recent video appears on top). It will also display a thumbnail image
-for the /eight most recent videos/. This is done to save some bandwith
-when dealing with a large amount of channels. Lastly, the channel
-names in the HTML file are hyperlinks to the /videos page/, not the
-home page, of each channel.
+for the /eight most recent videos/. This is done to save some
+bandwidth when dealing with a large amount of channels. Lastly, the
+channel names in the HTML file are hyperlinks to the /videos page/,
+not the home page, of each channel.
 ** Notes
-The YouTube API v2.0 does not support getting videos for multiple
+The YouTube API v3.0 does not support getting videos for multiple
 channels in one request. Because of this a separate request needs to
 be done for each channel. To speed the script up a bit eight worker
 threads are used for the channels. This way eight channels can be
 handled simultaneously. Creating more than eight threads does not
 speed it up further because YouTube currently limits the amount of
-open connections per client to eight.
+open connections per client to eight. What makes things still more
+complicated is that v3.0 of the API doesn't support getting videos for
+a channel id. Instead, a uploaded playlist is created automatically
+for each channel by YouTube. This playlist is what needs to be used to
+grab the most recent videos. In order to get to this playlist though
+we need its id. In order to do that we need to do a separate
+request. To not have to do this every time, we cache these responses
+locally to disk (in =youtube_sub_feed.cache=).
 ** Example
 Given the following channels-file:
 #+BEGIN_SRC bash
-emacsrocks
-minutephysics
-minuteearth
-smalin
+UCkRmQ_G_NbdbCQMpALg6UPg
+UCUHW94eEFW7hkUMVaZz4eDg
+UCeiYXex_fwgYDonaTcSIk6w
+UC2zb5cQbLabj3U9l3tke1pg
 #+END_SRC
 The produced HTML file looks like this:
 [[./example_output.png]]
