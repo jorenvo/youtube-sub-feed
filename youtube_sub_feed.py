@@ -83,16 +83,27 @@ def print_progress(finished_one=True):
 print_progress.amount_finished = 0 # function attribute
 
 def lookup_playlist_id(channel_id):
-    if channel_id not in playlist_id_cache:
+    lock.acquire()
+    cached_channel_playlist_id = channel_id in playlist_id_cache
+    lock.release()
+
+    if not cached_channel_playlist_id:
         response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
                                           "key=" + api_key +
                                           "&part=contentDetails" +
                                           "&fields=items/contentDetails/relatedPlaylists/uploads" +
                                           "&id=" + channel_id).read().decode("utf-8")
         response = json.loads(response)
-        playlist_id_cache[channel_id] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
 
-    return playlist_id_cache[channel_id]
+        lock.acquire()
+        playlist_id_cache[channel_id] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+        lock.release()
+
+    lock.acquire()
+    to_return = playlist_id_cache[channel_id]
+    lock.release()
+
+    return to_return
 
 def create_channel_vid_links():
     while True:
