@@ -27,7 +27,7 @@ import pprint
 api_key = "AIzaSyDF98jSaJnjAI1PtG15GZqElPqzsHB3_ZQ"
 
 # maps channel_id => uploaded_playlist_id
-cache_name = "youtube_sub_feed.cache"
+cache_name = os.path.join(os.path.dirname(__file__), 'youtube_sub_feed.cache')
 
 class Entry:
     """Grabs the data we need and escapes it"""
@@ -88,6 +88,7 @@ def lookup_playlist_id(channel_id):
     lock.release()
 
     if not cached_channel_playlist_id:
+        print(channel_id + " missed cache")
         response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
                                           "key=" + api_key +
                                           "&part=contentDetails" +
@@ -176,7 +177,6 @@ except IndexError:
     output_fd = sys.stdout
 
 playlist_id_cache = read_cache(cache_name)
-prettyPrint(playlist_id_cache)
 
 entries = [];
 channels = get_channel_list_from_file(channels_file_path)
