@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from urllib import request
 import sys
 import json
