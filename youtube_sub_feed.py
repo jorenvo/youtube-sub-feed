@@ -29,15 +29,20 @@ class Entry:
     """Grabs the data we need and escapes it"""
     def __init__(self, entry=None):
         if entry is not None:
-            self.channel_name = entry['snippet']['channelTitle']
             self.channel_id = entry['snippet']['channelId']
+
+            if entry['snippet']['channelTitle']:
+                self.channel_title = entry['snippet']['channelTitle']
+            else:
+                self.channel_title = get_channel_title(self.channel_id)
+
             self.video_title = entry['snippet']['title']
             self.video_url = "https://www.youtube.com/watch?v=" + entry['id']['videoId']
             self.thumbnail_url = entry['snippet']['thumbnails']['medium']['url']
             self.publishedAt = entry['snippet']['publishedAt']
 
     def escape(self):
-        self.channel_name = cgi.escape(self.channel_name)
+        self.channel_title = cgi.escape(self.channel_title)
         self.video_title = cgi.escape(self.video_title)
 
 def write_file_to_fd(path):
@@ -76,6 +81,19 @@ def print_progress(finished_one=True):
         print()
 
 print_progress.amount_finished = 0 # function attribute
+
+def get_channel_title(channel_name):
+    "Required for some channels that for whatever reason do not set their channelTitle"
+
+    response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
+                                      "key=" + api_key +
+                                      "&id=" + channel_name +
+                                      "&fields=items/snippet/title" +
+                                      "&part=snippet").read().decode("utf-8")
+    response = json.loads(response)
+
+    return response['items'][0]['snippet']['title']
+
 
 def create_channel_vid_links():
     while True:
@@ -177,7 +195,7 @@ for entry in entries:
 
     print('\t\t<tr>', file=output_fd)
     print('\t\t\t<td class="channel_column" rowspan="2"><a class="channel_name" href="https://www.youtube.com/channel/'
-          + entry.channel_id + '/videos">[' + entry.channel_name + ']</a></td>', file=output_fd)
+          + entry.channel_id + '/videos">[' + entry.channel_title + ']</a></td>', file=output_fd)
     print('\t\t\t<td class="video_column"><a href="' + entry.video_url + '">' + entry.video_title + '</a></td>', file=output_fd)
     print('\t\t</tr>', file=output_fd)
 
