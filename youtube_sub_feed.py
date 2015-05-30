@@ -20,26 +20,21 @@ import urllib.request
 import threading
 import queue
 import cgi
-import pickle
 import json
 import pprint
 
 api_key = "AIzaSyDF98jSaJnjAI1PtG15GZqElPqzsHB3_ZQ"
 
-# maps channel_id => uploaded_playlist_id
-cache_name = os.path.join(os.path.dirname(__file__), 'youtube_sub_feed.cache')
-
 class Entry:
     """Grabs the data we need and escapes it"""
     def __init__(self, entry=None):
         if entry is not None:
-            entry = entry['snippet']
-            self.channel_name = entry['channelTitle']
-            self.channel_id = entry['channelId']
-            self.video_title = entry['title']
-            self.video_url = "https://www.youtube.com/watch?v=" + entry['resourceId']['videoId']
-            self.thumbnail_url = entry['thumbnails']['medium']['url']
-            self.publishedAt = entry['publishedAt']
+            self.channel_name = entry['snippet']['channelTitle']
+            self.channel_id = entry['snippet']['channelId']
+            self.video_title = entry['snippet']['title']
+            self.video_url = "https://www.youtube.com/watch?v=" + entry['id']['videoId']
+            self.thumbnail_url = entry['snippet']['thumbnails']['medium']['url']
+            self.publishedAt = entry['snippet']['publishedAt']
 
     def escape(self):
         self.channel_name = cgi.escape(self.channel_name)
@@ -82,41 +77,18 @@ def print_progress(finished_one=True):
 
 print_progress.amount_finished = 0 # function attribute
 
-def lookup_playlist_id(channel_id):
-    lock.acquire()
-    cached_channel_playlist_id = channel_id in playlist_id_cache
-    lock.release()
-
-    if not cached_channel_playlist_id:
-        print(channel_id + " missed cache")
-        response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/channels?" +
-                                          "key=" + api_key +
-                                          "&part=contentDetails" +
-                                          "&fields=items/contentDetails/relatedPlaylists/uploads" +
-                                          "&id=" + channel_id).read().decode("utf-8")
-        response = json.loads(response)
-
-        lock.acquire()
-        playlist_id_cache[channel_id] = response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-        lock.release()
-
-    lock.acquire()
-    to_return = playlist_id_cache[channel_id]
-    lock.release()
-
-    return to_return
-
 def create_channel_vid_links():
     while True:
         max_results = 3
         channel_name = queue.get()
-        playlist_id = lookup_playlist_id(channel_name)
 
-        response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/playlistItems?" +
+        response = urllib.request.urlopen("https://www.googleapis.com/youtube/v3/search?" +
                                           "key=" + api_key +
                                           "&maxResults=" + str(max_results) +
-                                          "&playlistId=" + playlist_id +
-                                          "&fields=items/snippet(title,channelId,channelTitle,publishedAt,thumbnails/medium/url,resourceId/videoId)" +
+                                          "&channelId=" + channel_name +
+                                          "&fields=items/id/videoId,items/snippet(title,channelId,channelTitle,publishedAt,thumbnails/medium/url)" +
+                                          "&order=date" +
+                                          "&type=video" +
                                           "&part=snippet").read().decode("utf-8")
         response = json.loads(response)
 
@@ -144,17 +116,6 @@ def get_channel_list_from_file(file_path):
 
     return channels
 
-def read_cache(file_path):
-    try:
-        with open(file_path, 'rb') as f:
-            return pickle.load(f)
-    except IOError:
-        return {}
-
-def write_cache(file_path, to_write):
-    with open(file_path, 'wb') as f:
-        pickle.dump(playlist_id_cache, f)
-
 def prettyPrint(obj):
     pp = pprint.PrettyPrinter(indent = 4)
     pp.pprint(obj)
@@ -175,8 +136,6 @@ try:
     output_fd = open(sys.argv[2], 'w')
 except IndexError:
     output_fd = sys.stdout
-
-playlist_id_cache = read_cache(cache_name)
 
 entries = []
 channels = get_channel_list_from_file(channels_file_path)
@@ -199,8 +158,6 @@ for channel in channels:
 
 # wait until all the work in the queue is done
 queue.join()
-
-write_cache(cache_name, playlist_id_cache)
 
 entries = sorted(entries, key=lambda entry: entry.publishedAt, reverse=True)
 
