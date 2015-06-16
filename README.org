@@ -18,7 +18,7 @@ obviously nice to use because you didn't have to use cryptic id
 strings. Although you can still use channel names (called Usernames in
 the API), this leads to issues because some newer channels don't have
 usernames associated with them. I assume this means they're not linked
-to G+ or something. Anyway because of this, I decided to just use the
+to G+ or something. Anyway, because of this I decided to just use the
 channel id's and deal with them being unreadable. I provided a script
 called =convert_to_channel_id.py= which takes a channel name and
 outputs the channel id.
@@ -39,14 +39,7 @@ be done for each channel. To speed the script up a bit eight worker
 threads are used for the channels. This way eight channels can be
 handled simultaneously. Creating more than eight threads does not
 speed it up further because YouTube currently limits the amount of
-open connections per client to eight. What makes things still more
-complicated is that v3.0 of the API doesn't support getting videos for
-a channel id. Instead, a uploaded playlist is created automatically
-for each channel by YouTube. This playlist is what needs to be used to
-grab the most recent videos. In order to get to this playlist though
-we need its id. In order to do that we need to do a separate
-request. To not have to do this every time, we cache these responses
-locally to disk (in =youtube_sub_feed.cache=).
+open connections per client to eight.
 ** Example
 Given the following channels-file:
 #+BEGIN_SRC bash
