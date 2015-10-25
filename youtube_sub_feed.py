@@ -74,7 +74,7 @@ def print_progress(finished_one=True):
         else:
             print(" ", end="")
 
-    print("] " + str(percent_done) + "%", end="")
+    print("] " + str(percent_done) + "%", end="", flush=True)
 
     # print newline if we're done
     if percent_done == 100:
